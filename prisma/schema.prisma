@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Supabase "Transaction pooler" URL (port 6543) with ?pgbouncer=true&connection_limit=1
+  url       = env("DATABASE_URL")
+  // Supabase "Session pooler" URL (port 5432) — used for creating tables
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  MASTER
+  ADMIN
+}
+
+enum UserStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum TrainingStatus {
+  ACTIVE
+  STOPPED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  displayName  String?
+  passwordHash String
+  role         Role       @default(ADMIN)
+  status       UserStatus @default(PENDING)
+  createdAt    DateTime   @default(now())
+  trainings    Training[]
+}
+
+model Training {
+  id          String         @id @default(cuid())
+  name        String
+  trainer     String?
+  location    String?
+  // Calendar date of the training, stored as YYYY-MM-DD to avoid time-zone shifts
+  date        String
+  token       String         @unique
+  status      TrainingStatus @default(ACTIVE)
+  autoCloseAt DateTime?
+  stoppedAt   DateTime?
+  // "MANUAL" when an admin stopped it, "AUTO" when the time window ended
+  stopReason  String?
+  createdById String
+  createdBy   User           @relation(fields: [createdById], references: [id])
+  createdAt   DateTime       @default(now())
+  attendance  Attendance[]
+  roster      RosterEntry[]
+
+  @@index([createdById])
+}
+
+model Attendance {
+  id           String   @id @default(cuid())
+  trainingId   String
+  training     Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  employeeId   String
+  employeeName String
+  submittedAt  DateTime @default(now())
+
+  @@unique([trainingId, employeeId])
+}
+
+model RosterEntry {
+  id           String   @id @default(cuid())
+  trainingId   String
+  training     Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  employeeId   String
+  employeeName String
+  position     Int      @default(0)
+
+  @@unique([trainingId, employeeId])
+}
