@@ -4,6 +4,7 @@ import { isUniqueViolation, json, jsonError, readJson, route } from '@/lib/http'
 import { formatTrainingDate, normalizeEmployeeId, normalizeName } from '@/lib/format';
 import { isOpen, syncStatus } from '@/lib/trainings';
 import { cleanDeviceId, DEVICE_COOKIE, deviceCookieOptions, deviceHash, newDeviceId } from '@/lib/device';
+import { cleanAccuracy, cleanCoords, distanceMeters, formatDistance, isWithinVenue } from '@/lib/geo';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,34 @@ function publicTraining(t) {
     isOpen: isOpen(t),
     closedReason: isOpen(t) ? null : t.stopReason || 'MANUAL',
     autoCloseAt: t.autoCloseAt,
+    // Only whether a check is needed — the venue coordinates are never sent to phones.
+    requireLocation: Boolean(t.requireLocation && t.venueLat != null && t.venueLng != null),
   };
+}
+
+// Returns { error } if the phone is not at the venue, or { distance, accuracy } if it is.
+function checkLocation(training, body) {
+  if (!training.requireLocation || training.venueLat == null || training.venueLng == null) return {};
+  const coords = cleanCoords(body.location?.lat, body.location?.lng);
+  if (!coords) {
+    return {
+      error: jsonError(400, 'This training needs your location to confirm you are at the venue. Allow location and try again.', {
+        locationRequired: true,
+      }),
+    };
+  }
+  const accuracy = cleanAccuracy(body.location?.accuracy);
+  const distance = Math.round(distanceMeters(training.venueLat, training.venueLng, coords.lat, coords.lng));
+  if (!isWithinVenue(distance, accuracy, training.radiusMeters ?? 150)) {
+    return {
+      error: jsonError(
+        403,
+        `You appear to be about ${formatDistance(distance)} from the training venue. You must be at the venue to mark attendance. If you are in the room, turn on precise location / GPS and try again.`,
+        { tooFar: true }
+      ),
+    };
+  }
+  return { distance, accuracy };
 }
 
 function maskId(id) {
@@ -79,6 +107,9 @@ export const POST = route(async (req, { params }) => {
     return jsonError(400, 'Enter your full name.');
   }
 
+  const place = checkLocation(training, body);
+  if (place.error) return place.error;
+
   // The phone is recognised by its cookie or by the copy saved in the page's local storage,
   // so clearing only one of them is not enough to submit again.
   const cookieId = cleanDeviceId(req.cookies.get(DEVICE_COOKIE)?.value);
@@ -109,7 +140,15 @@ export const POST = route(async (req, { params }) => {
 
   try {
     const record = await prisma.attendance.create({
-      data: { trainingId: training.id, employeeId, employeeName, deviceId, deviceHash: deviceHash(req) },
+      data: {
+        trainingId: training.id,
+        employeeId,
+        employeeName,
+        deviceId,
+        deviceHash: deviceHash(req),
+        distanceMeters: place.distance ?? null,
+        locationAccuracy: place.accuracy ?? null,
+      },
     });
     const res = json({ ok: true, employeeId, employeeName, submittedAt: record.submittedAt, deviceId }, 201);
     return withDeviceCookie(res, deviceId, Boolean(cookieId));

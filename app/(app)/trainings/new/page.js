@@ -6,10 +6,12 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api-client';
 import { DURATION_OPTIONS, todayISO } from '@/lib/format';
 import { Alert } from '@/components/ui';
+import { getCurrentPosition } from '@/components/geo-client';
+import { RADIUS_OPTIONS, formatDistance } from '@/lib/geo';
 
 export default function NewTrainingPage() {
   const router = useRouter();
-  const [form, setForm] = useState({ name: '', trainer: '', location: '', date: '', durationMinutes: 60 });
+  const [form, setForm] = useState({ name: '', trainer: '', location: '', date: '', durationMinutes: 60, requireLocation: false, radiusMeters: 150 });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -25,9 +27,16 @@ export default function NewTrainingPage() {
     setError('');
     setBusy(true);
     try {
+      let venue;
+      if (form.requireLocation) venue = await getCurrentPosition();
       const { training } = await api('/api/trainings', {
         method: 'POST',
-        body: { ...form, durationMinutes: Number(form.durationMinutes) },
+        body: {
+          ...form,
+          durationMinutes: Number(form.durationMinutes),
+          radiusMeters: Number(form.radiusMeters),
+          venue,
+        },
       });
       router.push(`/trainings/${training.id}`);
     } catch (err) {
@@ -72,6 +81,30 @@ export default function NewTrainingPage() {
             <input id="location" value={form.location} onChange={set('location')} maxLength={120} />
           </div>
         </div>
+        <div className="check-row">
+          <input
+            id="requireLocation"
+            type="checkbox"
+            checked={form.requireLocation}
+            onChange={(e) => setForm({ ...form, requireLocation: e.target.checked })}
+          />
+          <label htmlFor="requireLocation">
+            <strong>Location check:</strong> participants must be at this venue
+            <span className="hint" style={{ display: 'block' }}>
+              Tick this only if you are in the training room now — your current location becomes the venue. You can also set it later from the training page.
+            </span>
+          </label>
+        </div>
+        {form.requireLocation && (
+          <div className="field" style={{ maxWidth: 260 }}>
+            <label htmlFor="radius">Allowed distance</label>
+            <select id="radius" value={form.radiusMeters} onChange={set('radiusMeters')}>
+              {RADIUS_OPTIONS.map((r) => (
+                <option key={r} value={r}>{`Within ${formatDistance(r)}`}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <Alert>{error}</Alert>
         <div className="row">
           <button className="btn btn-primary" disabled={busy || !form.date}>

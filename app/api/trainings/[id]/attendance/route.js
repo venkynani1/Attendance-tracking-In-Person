@@ -34,6 +34,8 @@ export const GET = route(async (_req, { params }) => {
     submittedAt: a.submittedAt,
     inRoster: roster.length === 0 ? null : rosterIds.has(a.employeeId),
     possibleSameDevice: Boolean(a.deviceHash && hashCounts.get(a.deviceHash) > 1),
+    distanceMeters: a.distanceMeters,
+    locationAccuracy: a.locationAccuracy,
   }));
   const absent = roster
     .filter((r) => !presentIds.has(r.employeeId))

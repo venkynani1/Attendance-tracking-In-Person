@@ -219,3 +219,8 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 .skeleton { background: var(--surface-2); border-radius: var(--radius-sm); min-height: 18px; animation: pulse 1.4s infinite; }
 .divider { height: 1px; background: var(--border); margin: 4px 0; }
 .file-input { padding: 8px; }
+
+/* Checkbox rows */
+.check-row { display: flex; gap: 10px; align-items: flex-start; }
+.check-row input[type="checkbox"] { width: 18px; height: 18px; min-height: 0; margin-top: 3px; flex: none; accent-color: var(--primary); }
+.check-row label { font-size: 0.92rem; }

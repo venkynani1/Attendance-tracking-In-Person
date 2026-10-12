@@ -7,6 +7,8 @@ import { api } from '@/lib/api-client';
 import { DURATION_OPTIONS, formatTime } from '@/lib/format';
 import { Alert, StatusPill, useNow } from '@/components/ui';
 import { isLocalUrl, useAttendUrl, useQrDataUrl } from '@/components/qr';
+import { getCurrentPosition } from '@/components/geo-client';
+import { formatDistance, RADIUS_OPTIONS } from '@/lib/geo';
 
 export default function TrainingPage() {
   const { id } = useParams();
@@ -21,6 +23,7 @@ export default function TrainingPage() {
   const [reopenMinutes, setReopenMinutes] = useState(30);
   const [query, setQuery] = useState('');
   const [copied, setCopied] = useState(false);
+  const [radius, setRadius] = useState(null);
   const fileRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -111,6 +114,41 @@ export default function TrainingPage() {
     );
   };
 
+  const radiusValue = radius ?? training?.radiusMeters ?? 150;
+
+  const setVenueHere = () =>
+    run(
+      'venue',
+      async () => {
+        const pos = await getCurrentPosition();
+        await api(`/api/trainings/${id}/location`, {
+          method: 'PATCH',
+          body: { venue: pos, radiusMeters: Number(radiusValue), requireLocation: true },
+        });
+      },
+      'Venue saved. Location check is on.'
+    );
+
+  const changeRadius = (value) => {
+    setRadius(Number(value));
+    if (training?.venueSet) {
+      run('venue', () =>
+        api(`/api/trainings/${id}/location`, { method: 'PATCH', body: { radiusMeters: Number(value) } })
+      );
+    }
+  };
+
+  const toggleLocation = () =>
+    run(
+      'venue',
+      () =>
+        api(`/api/trainings/${id}/location`, {
+          method: 'PATCH',
+          body: { requireLocation: !training.requireLocation },
+        }),
+      training.requireLocation ? 'Location check turned off.' : 'Location check turned on.'
+    );
+
   const removeEntry = (p) => {
     if (!window.confirm(`Remove ${p.employeeName} (${p.employeeId}) from this training's attendance?`)) return;
     run(
@@ -154,6 +192,7 @@ export default function TrainingPage() {
   }
 
   const rosterCount = training.rosterCount || 0;
+  const showDistance = training.requireLocation || data.present.some((p) => p.distanceMeters != null);
   const presentCount = data.present.length;
 
   return (
@@ -249,6 +288,56 @@ export default function TrainingPage() {
 
           <section className="card stack">
             <div className="card-head" style={{ marginBottom: 0 }}>
+              <h2>Location check</h2>
+              <span className={`pill ${training.requireLocation ? 'pill-info' : 'pill-closed'}`}>
+                {training.requireLocation ? 'On' : 'Off'}
+              </span>
+            </div>
+            <p className="small muted">
+              {training.venueSet
+                ? `Participants must be within ${radiusValue} m of the venue to mark attendance${training.requireLocation ? '' : ' (when turned on)'}.`
+                : 'Stand in the training room and save it as the venue. Participants will then have to be there to mark attendance.'}
+            </p>
+            {training.venueSet && training.venueAccuracy > 100 && (
+              <Alert kind="warn">
+                {`Your location was imprecise when you saved the venue (±${training.venueAccuracy} m). Turn on precise location / move near a window and tap “Update venue”.`}
+              </Alert>
+            )}
+            <div className="row">
+              <select
+                value={radiusValue}
+                onChange={(e) => changeRadius(e.target.value)}
+                aria-label="Allowed distance from venue"
+                style={{ flex: 1, minWidth: 120 }}
+                disabled={busy === 'venue'}
+              >
+                {RADIUS_OPTIONS.map((r) => (
+                  <option key={r} value={r}>{`Within ${formatDistance(r)}`}</option>
+                ))}
+              </select>
+              <button className="btn btn-sm" onClick={setVenueHere} disabled={busy === 'venue'}>
+                {busy === 'venue' ? 'Working…' : training.venueSet ? 'Update venue to here' : 'Use my location as venue'}
+              </button>
+            </div>
+            {training.venueSet && (
+              <div className="row">
+                <button className="btn btn-sm" onClick={toggleLocation} disabled={busy === 'venue'}>
+                  {training.requireLocation ? 'Turn off location check' : 'Turn on location check'}
+                </button>
+                <a
+                  className="small"
+                  href={`https://www.google.com/maps?q=${training.venueLat},${training.venueLng}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View venue on map
+                </a>
+              </div>
+            )}
+          </section>
+
+          <section className="card stack">
+            <div className="card-head" style={{ marginBottom: 0 }}>
               <h2>Roster (optional)</h2>
               {rosterCount > 0 && <span className="pill pill-info">{rosterCount} employees</span>}
             </div>
@@ -306,6 +395,7 @@ export default function TrainingPage() {
                       <th>Employee ID</th>
                       <th>Name</th>
                       <th>Time</th>
+                      {showDistance && <th>Distance</th>}
                       <th />
                     </tr>
                   </thead>
@@ -327,6 +417,11 @@ export default function TrainingPage() {
                           )}
                         </td>
                         <td className="muted">{formatTime(p.submittedAt)}</td>
+                        {showDistance && (
+                          <td className="muted" title={p.locationAccuracy != null ? `GPS accuracy ±${p.locationAccuracy} m` : ''}>
+                            {p.distanceMeters != null ? formatDistance(p.distanceMeters) : '—'}
+                          </td>
+                        )}
                         <td style={{ textAlign: 'right' }}>
                           <button
                             className="btn btn-sm btn-ghost"

@@ -50,6 +50,12 @@ model Training {
   stoppedAt   DateTime?
   // "MANUAL" when an admin stopped it, "AUTO" when the time window ended
   stopReason  String?
+  // Location check: participants must be within radiusMeters of the venue
+  requireLocation Boolean @default(false)
+  venueLat        Float?
+  venueLng        Float?
+  venueAccuracy   Int?
+  radiusMeters    Int     @default(150)
   createdById String
   createdBy   User           @relation(fields: [createdById], references: [id])
   createdAt   DateTime       @default(now())
@@ -70,6 +76,9 @@ model Attendance {
   deviceId     String?
   // Hash of network address + browser, used only to flag possible repeat submissions
   deviceHash   String?
+  // Distance from the venue (metres) and GPS accuracy reported by the phone, when location was checked
+  distanceMeters   Int?
+  locationAccuracy Int?
 
   @@unique([trainingId, employeeId])
   @@index([trainingId, deviceId])

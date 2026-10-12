@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { json, jsonError, readJson, route } from '@/lib/http';
 import { requireUser } from '@/lib/auth';
 import { isValidISODate, normalizeName } from '@/lib/format';
+import { cleanAccuracy, cleanCoords, cleanRadius } from '@/lib/geo';
 import {
   autoCloseFrom,
   includeCreator,
@@ -45,6 +46,20 @@ export const POST = route(async (req) => {
   if (trainer && trainer.length > 120) return jsonError(400, 'Trainer name is too long.');
   if (location && location.length > 120) return jsonError(400, 'Location is too long.');
 
+  // Optional location check, using the admin's current position as the venue.
+  let venue = {};
+  if (body.requireLocation) {
+    const coords = cleanCoords(body.venue?.lat, body.venue?.lng);
+    if (!coords) return jsonError(400, 'Could not read your location for the venue. Allow location and try again.');
+    venue = {
+      requireLocation: true,
+      venueLat: coords.lat,
+      venueLng: coords.lng,
+      venueAccuracy: cleanAccuracy(body.venue?.accuracy),
+      radiusMeters: cleanRadius(body.radiusMeters) ?? 150,
+    };
+  }
+
   const training = await prisma.training.create({
     data: {
       name,
@@ -55,6 +70,7 @@ export const POST = route(async (req) => {
       status: 'ACTIVE',
       autoCloseAt: autoCloseFrom(duration),
       createdById: user.id,
+      ...venue,
     },
     include: { ...includeCreator, _count: { select: { attendance: true, roster: true } } },
   });

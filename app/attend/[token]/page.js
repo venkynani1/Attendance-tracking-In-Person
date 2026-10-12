@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { api, safeStorage } from '@/lib/api-client';
 import { formatTime, normalizeName } from '@/lib/format';
 import { Alert, BrandMark } from '@/components/ui';
+import { getCurrentPosition } from '@/components/geo-client';
 
 const SAVED_KEY = 'attendance.participant';
 const DEVICE_KEY = 'attendance.device';
@@ -62,6 +63,7 @@ export default function AttendPage() {
   const [touched, setTouched] = useState({ employeeId: false, employeeName: false });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [done, setDone] = useState(null);
   const [blocked, setBlocked] = useState(null);
@@ -143,7 +145,16 @@ export default function AttendPage() {
     try {
       const storage = safeStorage();
       const deviceId = storage.get(DEVICE_KEY) || undefined;
-      const r = await api(`/api/attend/${token}`, { method: 'POST', body: { ...form, deviceId } });
+      let location;
+      if (training?.requireLocation) {
+        setLocating(true);
+        try {
+          location = await getCurrentPosition();
+        } finally {
+          setLocating(false);
+        }
+      }
+      const r = await api(`/api/attend/${token}`, { method: 'POST', body: { ...form, deviceId, location } });
       storage.set(SAVED_KEY, JSON.stringify({ employeeId: r.employeeId, employeeName: r.employeeName }));
       if (r.deviceId && !storage.get(DEVICE_KEY)) storage.set(DEVICE_KEY, r.deviceId);
       storage.set(
@@ -162,7 +173,7 @@ export default function AttendPage() {
       } else {
         setError(err.message);
         // Validation errors send them back to the form to fix; duplicates stay on screen.
-        if (err.status === 400) setConfirming(false);
+        if (err.status === 400 && !err.data?.locationRequired) setConfirming(false);
       }
     } finally {
       setBusy(false);
@@ -226,8 +237,13 @@ export default function AttendPage() {
                   </div>
                 </div>
                 <Alert>{error}</Alert>
+                {training.requireLocation && (
+                  <Alert kind="info">
+                    Your phone will ask to share your location to confirm you are at the training venue. Please tap Allow.
+                  </Alert>
+                )}
                 <button className="btn btn-primary btn-block btn-lg" onClick={submit} disabled={busy}>
-                  {busy ? 'Submitting…' : 'Yes, details are correct — submit'}
+                  {locating ? 'Checking your location…' : busy ? 'Submitting…' : 'Yes, details are correct — submit'}
                 </button>
                 <button
                   className="btn btn-block"
@@ -282,6 +298,9 @@ export default function AttendPage() {
                   />
                   {touched.employeeName && nameError && <span className="hint hint-error">{nameError}</span>}
                 </div>
+                {training.requireLocation && (
+                  <p className="small muted">📍 This training checks that you are at the venue. You&apos;ll be asked to share your location.</p>
+                )}
                 <Alert>{error}</Alert>
                 <button className="btn btn-primary btn-block btn-lg">Submit</button>
               </form>
