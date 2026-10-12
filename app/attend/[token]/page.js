@@ -7,6 +7,8 @@ import { formatTime, normalizeName } from '@/lib/format';
 import { Alert, BrandMark } from '@/components/ui';
 
 const SAVED_KEY = 'attendance.participant';
+const DEVICE_KEY = 'attendance.device';
+const doneKey = (token) => `attendance.done.${token}`;
 const ID_LENGTH = 10;
 
 function ClosedMessage({ reason }) {
@@ -19,6 +21,24 @@ function ClosedMessage({ reason }) {
           ? 'The attendance window for this training has ended.'
           : 'Attendance was closed by the admin.'}{' '}
         Please contact your trainer if you need help.
+      </p>
+    </div>
+  );
+}
+
+function AlreadySubmitted({ info }) {
+  return (
+    <div className="text-center stack">
+      <div className="big-icon ok">✓</div>
+      <h2>Attendance already submitted from this phone</h2>
+      {info && (
+        <p className="muted">
+          {info.employeeName} ({info.employeeId})
+          {info.submittedAt ? ` at ${formatTime(info.submittedAt)}` : ''}
+        </p>
+      )}
+      <p className="small muted">
+        Each phone can mark attendance only once per training. Every participant must scan with their own phone.
       </p>
     </div>
   );
@@ -44,11 +64,16 @@ export default function AttendPage() {
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [done, setDone] = useState(null);
+  const [blocked, setBlocked] = useState(null);
 
   const loadStatus = useCallback(async () => {
     try {
-      const d = await api(`/api/attend/${token}`);
+      const storage = safeStorage();
+      const localId = storage.get(DEVICE_KEY);
+      const d = await api(`/api/attend/${token}${localId ? `?d=${encodeURIComponent(localId)}` : ''}`);
+      if (!localId && d.deviceId) storage.set(DEVICE_KEY, d.deviceId);
       setTraining(d.training);
+      if (d.alreadySubmitted) setBlocked(d.alreadySubmitted);
       setLoadError('');
     } catch (err) {
       if (err.status === 404) setLoadError(err.message);
@@ -59,6 +84,15 @@ export default function AttendPage() {
 
   useEffect(() => {
     loadStatus();
+    // If this phone already submitted for this training, show that instead of the form.
+    const doneHere = safeStorage().get(doneKey(token));
+    if (doneHere) {
+      try {
+        setBlocked(JSON.parse(doneHere));
+      } catch {
+        setBlocked({});
+      }
+    }
     // Prefill details from this phone's last submission.
     const saved = safeStorage().get(SAVED_KEY);
     if (saved) {
@@ -77,10 +111,10 @@ export default function AttendPage() {
 
   // While the form is open, check every 15 s whether the admin has closed attendance.
   useEffect(() => {
-    if (!training?.isOpen || done) return;
+    if (!training?.isOpen || done || blocked) return;
     const t = setInterval(loadStatus, 15000);
     return () => clearInterval(t);
-  }, [training?.isOpen, done, loadStatus]);
+  }, [training?.isOpen, done, blocked, loadStatus]);
 
   const idError = idProblem(form.employeeId);
   const nameError = nameProblem(form.employeeName);
@@ -107,13 +141,23 @@ export default function AttendPage() {
     setError('');
     setBusy(true);
     try {
-      const r = await api(`/api/attend/${token}`, { method: 'POST', body: form });
-      safeStorage().set(SAVED_KEY, JSON.stringify({ employeeId: r.employeeId, employeeName: r.employeeName }));
+      const storage = safeStorage();
+      const deviceId = storage.get(DEVICE_KEY) || undefined;
+      const r = await api(`/api/attend/${token}`, { method: 'POST', body: { ...form, deviceId } });
+      storage.set(SAVED_KEY, JSON.stringify({ employeeId: r.employeeId, employeeName: r.employeeName }));
+      if (r.deviceId && !storage.get(DEVICE_KEY)) storage.set(DEVICE_KEY, r.deviceId);
+      storage.set(
+        doneKey(token),
+        JSON.stringify({ employeeId: r.employeeId, employeeName: r.employeeName, submittedAt: r.submittedAt })
+      );
       setDone(r);
       setConfirming(false);
     } catch (err) {
       if (err.data?.closed) {
         setTraining(err.data.training);
+        setConfirming(false);
+      } else if (err.data?.deviceUsed) {
+        setBlocked(err.data.alreadySubmitted || {});
         setConfirming(false);
       } else {
         setError(err.message);
@@ -154,7 +198,9 @@ export default function AttendPage() {
               </p>
             </div>
 
-            {done ? (
+            {blocked && !done ? (
+              <AlreadySubmitted info={blocked} />
+            ) : done ? (
               <div className="text-center stack">
                 <div className="big-icon ok">✓</div>
                 <h2>You&apos;re marked present</h2>

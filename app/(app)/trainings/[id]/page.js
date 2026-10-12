@@ -111,6 +111,15 @@ export default function TrainingPage() {
     );
   };
 
+  const removeEntry = (p) => {
+    if (!window.confirm(`Remove ${p.employeeName} (${p.employeeId}) from this training's attendance?`)) return;
+    run(
+      `remove-${p.employeeId}`,
+      () => api(`/api/trainings/${id}/attendance`, { method: 'DELETE', body: { employeeId: p.employeeId } }),
+      `Removed ${p.employeeName}.`
+    );
+  };
+
   const clearRoster = () => {
     if (!window.confirm('Remove the roster? Attendance records are kept.')) return;
     run('roster', () => api(`/api/trainings/${id}/roster`, { method: 'DELETE' }), 'Roster removed.');
@@ -276,8 +285,8 @@ export default function TrainingPage() {
               <div className="stat-label">Absent (from roster)</div>
             </div>
             <div className="stat">
-              <div className="stat-value">{rosterCount > 0 ? data.present.filter((p) => p.inRoster === false).length : '—'}</div>
-              <div className="stat-label">Not on roster</div>
+              <div className="stat-value">{data.present.filter((p) => p.possibleSameDevice).length}</div>
+              <div className="stat-label">Flagged: possible same phone</div>
             </div>
           </div>
 
@@ -297,6 +306,7 @@ export default function TrainingPage() {
                       <th>Employee ID</th>
                       <th>Name</th>
                       <th>Time</th>
+                      <th />
                     </tr>
                   </thead>
                   <tbody>
@@ -306,9 +316,27 @@ export default function TrainingPage() {
                         <td className="mono">{p.employeeId}</td>
                         <td>
                           {p.employeeName}{' '}
-                          {p.inRoster === false && <span className="pill pill-warn">Not on roster</span>}
+                          {p.inRoster === false && <span className="pill pill-warn">Not on roster</span>}{' '}
+                          {p.possibleSameDevice && (
+                            <span
+                              className="pill pill-danger"
+                              title="Submitted from the same network and phone/browser type as another entry. Could be one phone used twice (e.g. a private tab), or two people with the same phone model on office Wi-Fi."
+                            >
+                              Possible same phone
+                            </span>
+                          )}
                         </td>
                         <td className="muted">{formatTime(p.submittedAt)}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            onClick={() => removeEntry(p)}
+                            disabled={busy === `remove-${p.employeeId}`}
+                            aria-label={`Remove ${p.employeeName}`}
+                          >
+                            Remove
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

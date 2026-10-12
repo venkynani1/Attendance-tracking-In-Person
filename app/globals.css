@@ -148,6 +148,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); o
 .pill-closed { background: var(--surface-2); color: var(--muted); }
 .pill-warn { background: var(--warn-soft); color: var(--warn); }
 .pill-info { background: var(--primary-soft); color: var(--primary); }
+.pill-danger { background: var(--danger-soft); color: var(--danger); cursor: help; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .pill-open::before { animation: none; } }
 

@@ -66,8 +66,14 @@ model Attendance {
   employeeId   String
   employeeName String
   submittedAt  DateTime @default(now())
+  // Random ID stored on the participant's phone (cookie + local storage): one submission per phone
+  deviceId     String?
+  // Hash of network address + browser, used only to flag possible repeat submissions
+  deviceHash   String?
 
   @@unique([trainingId, employeeId])
+  @@index([trainingId, deviceId])
+  @@index([trainingId, deviceHash])
 }
 
 model RosterEntry {

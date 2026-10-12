@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { isUniqueViolation, json, jsonError, readJson, route } from '@/lib/http';
 import { formatTrainingDate, normalizeEmployeeId, normalizeName } from '@/lib/format';
 import { isOpen, syncStatus } from '@/lib/trainings';
+import { cleanDeviceId, DEVICE_COOKIE, deviceCookieOptions, deviceHash, newDeviceId } from '@/lib/device';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,11 +24,41 @@ function publicTraining(t) {
   };
 }
 
-export const GET = route(async (_req, { params }) => {
+function maskId(id) {
+  return id.length > 4 ? `${'•'.repeat(id.length - 4)}${id.slice(-4)}` : id;
+}
+
+function withDeviceCookie(res, deviceId, hadCookie) {
+  if (!hadCookie) res.cookies.set(DEVICE_COOKIE, deviceId, deviceCookieOptions);
+  return res;
+}
+
+export const GET = route(async (req, { params }) => {
   const { token } = await params;
   const training = await findByToken(token);
   if (!training) return jsonError(404, 'This attendance link is not valid. Please scan the QR code again.');
-  return json({ training: publicTraining(training) });
+
+  const cookieId = cleanDeviceId(req.cookies.get(DEVICE_COOKIE)?.value);
+  const storedId = cleanDeviceId(req.nextUrl.searchParams.get('d'));
+  const knownIds = [...new Set([cookieId, storedId].filter(Boolean))];
+  const deviceId = cookieId || storedId || newDeviceId();
+
+  // Tell the page if this phone has already been used for this training.
+  const used = knownIds.length
+    ? await prisma.attendance.findFirst({
+        where: { trainingId: training.id, deviceId: { in: knownIds } },
+        select: { employeeId: true, employeeName: true, submittedAt: true },
+      })
+    : null;
+
+  const res = json({
+    training: publicTraining(training),
+    deviceId,
+    alreadySubmitted: used
+      ? { employeeId: maskId(used.employeeId), employeeName: used.employeeName, submittedAt: used.submittedAt }
+      : null,
+  });
+  return withDeviceCookie(res, deviceId, Boolean(cookieId));
 });
 
 export const POST = route(async (req, { params }) => {
@@ -48,11 +79,40 @@ export const POST = route(async (req, { params }) => {
     return jsonError(400, 'Enter your full name.');
   }
 
+  // The phone is recognised by its cookie or by the copy saved in the page's local storage,
+  // so clearing only one of them is not enough to submit again.
+  const cookieId = cleanDeviceId(req.cookies.get(DEVICE_COOKIE)?.value);
+  const bodyId = cleanDeviceId(body.deviceId);
+  const knownIds = [...new Set([cookieId, bodyId].filter(Boolean))];
+  const deviceId = cookieId || bodyId || newDeviceId();
+
+  if (knownIds.length > 0) {
+    const used = await prisma.attendance.findFirst({
+      where: { trainingId: training.id, deviceId: { in: knownIds } },
+      select: { employeeId: true, employeeName: true, submittedAt: true },
+    });
+    if (used) {
+      const samePerson = used.employeeId === employeeId;
+      const res = jsonError(
+        409,
+        samePerson
+          ? `You are already marked present for this training.`
+          : `This phone has already been used to mark attendance for this training (Employee ID ${maskId(used.employeeId)}). Each participant must use their own phone.`,
+        {
+          deviceUsed: true,
+          alreadySubmitted: { employeeId: maskId(used.employeeId), employeeName: used.employeeName, submittedAt: used.submittedAt },
+        }
+      );
+      return withDeviceCookie(res, deviceId, Boolean(cookieId));
+    }
+  }
+
   try {
     const record = await prisma.attendance.create({
-      data: { trainingId: training.id, employeeId, employeeName },
+      data: { trainingId: training.id, employeeId, employeeName, deviceId, deviceHash: deviceHash(req) },
     });
-    return json({ ok: true, employeeId, employeeName, submittedAt: record.submittedAt }, 201);
+    const res = json({ ok: true, employeeId, employeeName, submittedAt: record.submittedAt, deviceId }, 201);
+    return withDeviceCookie(res, deviceId, Boolean(cookieId));
   } catch (err) {
     if (isUniqueViolation(err)) {
       return jsonError(409, `Employee ID ${employeeId} is already marked present for this training.`, {
