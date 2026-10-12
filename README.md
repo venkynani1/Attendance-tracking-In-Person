@@ -33,7 +33,7 @@ QR-based attendance for in-person trainings. Admins create a training, show the 
 ### 1. Create the Supabase database
 
 1. Go to [supabase.com](https://supabase.com) → **New project**.
-2. Pick a region close to your users (e.g. **Mumbai / ap-south-1**). Set a database password and save it somewhere safe.
+2. Pick a region close to your users (this project uses **Seoul / ap-northeast-2**; `vercel.json` runs the app in the matching `icn1` region — change both together if you move the database). Set a database password and save it somewhere safe.
 3. When the project is ready, click **Connect** (top of the dashboard) and open the connection strings.
 4. Copy two of them, replacing `[YOUR-PASSWORD]` with your database password:
    - **Transaction pooler** (port **6543**) → this is `DATABASE_URL`. Add `?pgbouncer=true&connection_limit=1` to the end.
@@ -103,7 +103,7 @@ lib/                database, auth, Excel export, roster parsing, helpers
 components/         shared UI pieces and QR helpers
 prisma/schema.prisma
 middleware.js       redirects signed-out users to /login
-vercel.json         Mumbai region + daily health ping
+vercel.json         Seoul (icn1) region next to the database + daily health ping
 ```
 
 ## API
