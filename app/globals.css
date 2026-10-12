@@ -204,6 +204,16 @@ td.num { color: var(--muted); width: 40px; font-variant-numeric: tabular-nums; }
 .present-count { font-size: clamp(1.2rem, 2.5vw, 2rem); font-weight: 700; }
 .present-url { font-family: var(--mono); font-size: clamp(0.9rem, 1.6vw, 1.2rem); color: var(--muted); word-break: break-all; }
 
+/* Participant confirmation */
+.field .hint-error { color: var(--danger); font-weight: 600; }
+input[aria-invalid="true"] { border-color: var(--danger); }
+.confirm-box {
+  display: flex; flex-direction: column; gap: 12px;
+  background: var(--surface-2); border-radius: var(--radius-sm); padding: 14px 16px;
+}
+.confirm-label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 650; }
+.confirm-value { font-size: 1.25rem; font-weight: 700; word-break: break-word; }
+
 .empty { text-align: center; padding: 48px 16px; color: var(--muted); }
 .skeleton { background: var(--surface-2); border-radius: var(--radius-sm); min-height: 18px; animation: pulse 1.4s infinite; }
 .divider { height: 1px; background: var(--border); margin: 4px 0; }

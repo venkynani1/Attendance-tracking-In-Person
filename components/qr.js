@@ -3,12 +3,23 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 
-// The QR always points at the address this page was opened from (e.g. your-app.vercel.app),
-// so it can never accidentally encode localhost on the live site.
+// Public base address for participant links.
+// Priority: NEXT_PUBLIC_APP_URL (e.g. a custom domain) → the project's production domain
+// (set automatically by Vercel) → the address this page was opened from.
+// Using the production domain matters: Vercel puts a login wall ("Vercel Authentication")
+// on deployment-specific URLs, but not on the production domain.
+function publicBaseUrl() {
+  const explicit = process.env.NEXT_PUBLIC_APP_URL;
+  if (explicit) return explicit.replace(/\/+$/, '');
+  const production = process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL;
+  if (production) return `https://${production.replace(/^https?:\/\//, '').replace(/\/+$/, '')}`;
+  return window.location.origin;
+}
+
 export function useAttendUrl(token) {
   const [url, setUrl] = useState('');
   useEffect(() => {
-    if (token) setUrl(`${window.location.origin}/attend/${token}`);
+    if (token) setUrl(`${publicBaseUrl()}/attend/${token}`);
   }, [token]);
   return url;
 }

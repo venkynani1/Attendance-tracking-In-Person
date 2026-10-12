@@ -118,6 +118,8 @@ Auth uses an httpOnly session cookie (7 days), so no tokens are stored in the br
 
 ## Troubleshooting
 
+- **Participants see a Vercel / Google login after scanning** → the QR used a deployment-specific URL, which Vercel protects. QR codes now use the production domain automatically. To be safe, also go to Vercel → Settings → **Deployment Protection** and turn **Vercel Authentication** off, and always open the dashboard from the production domain. If you add a custom domain, set `NEXT_PUBLIC_APP_URL` (e.g. `https://attendance.yourcompany.com`) and redeploy.
+
 - **Build fails at `prisma db push`** → check `DIRECT_URL` is the *Session pooler* string (port 5432) and the password is correct/URL-encoded.
 - **"Something went wrong on the server" on login** → `JWT_SECRET` missing or shorter than 16 characters; add it and redeploy.
 - **Setup page says SETUP_KEY is not set** → add it in Vercel → Settings → Environment Variables, then **Redeploy**.

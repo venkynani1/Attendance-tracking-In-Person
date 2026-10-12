@@ -41,8 +41,8 @@ export const POST = route(async (req, { params }) => {
   const body = await readJson(req);
   const employeeId = normalizeEmployeeId(body.employeeId);
   const employeeName = normalizeName(body.employeeName);
-  if (!/^[A-Z0-9._/-]{2,40}$/.test(employeeId)) {
-    return jsonError(400, 'Enter a valid Employee ID (letters and numbers only).');
+  if (!/^\d{10}$/.test(employeeId)) {
+    return jsonError(400, 'Employee ID must be exactly 10 digits (numbers only).');
   }
   if (employeeName.length < 2 || employeeName.length > 120) {
     return jsonError(400, 'Enter your full name.');
